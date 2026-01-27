@@ -1,6 +1,8 @@
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
 #include <ctype.h>
+#include <Preferences.h>
+
 // ================= MOTOR SPEED CONTROL =================
 #define MOTOR_SPEED 3000        // keep it above 1k; this is in micro seconds (1000000 = 1 sec)
 #define STOP_TIME   1000        // this can be 0; it's unit is milli seconds (1000 = 1 sec)
@@ -11,6 +13,7 @@
 
 TFT_eSPI tft = TFT_eSPI();
 XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_IRQ);
+Preferences preferences;
 
 // ================= STEPPER (A4988) =================
 #define STEP_PIN   26
@@ -30,12 +33,11 @@ enum Page {
 Page currentPage = PAGE_HOME;
 
 // ================= VARIABLES =================
-int openAngle  = 180;
-int closeAngle = 180;
-
+int openAngle;
+int closeAngle;
+unsigned long turnCount;
 bool testRunning = false;
 bool directionOpening = true;
-unsigned long turnCount = 0;
 
 // keypad
 String keypadBuffer = "";
@@ -88,6 +90,11 @@ void handleTest() {
     stepMotor(false, degreesToSteps(closeAngle));
     directionOpening = true;
     turnCount++;
+
+    if(turnCount % 100 == 0){
+      preferences.putInt("turnCount", turnCount);
+    }
+
     drawTestPage();   // refresh counter
   }
 }
@@ -251,6 +258,11 @@ void handleTouch(int x, int y) {
 
 // ================= SETUP & LOOP =================
 void setup() {
+  preferences.begin("settings", false);
+  openAngle  = preferences.getInt("openAngle", 180);
+  closeAngle = preferences.getInt("closeAngle", 180);
+  turnCount = preferences.getULong("turnCount", 0);
+
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
