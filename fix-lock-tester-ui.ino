@@ -92,7 +92,7 @@ void handleTest() {
     turnCount++;
 
     if(turnCount % 100 == 0){
-      preferences.putInt("turnCount", turnCount);
+      preferences.putULong("turnCount", turnCount);
     }
 
     drawTestPage();   // refresh counter
@@ -242,6 +242,14 @@ void handleTouch(int x, int y) {
           else if (!strcmp(key,"OK")) {
             *keypadTarget = keypadBuffer.toInt();
             keypadBuffer = "";
+
+            if(&openAngle == keypadTarget){
+              preferences.putInt("openAngle", openAngle);
+            }
+            else if(&closeAngle == keypadTarget){
+              preferences.putInt("closeAngle", closeAngle);
+            }
+
             switchPage(PAGE_ANGLE_SETUP);
             return;
           }
