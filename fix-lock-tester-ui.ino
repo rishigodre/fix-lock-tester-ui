@@ -3,9 +3,10 @@
 #include <ctype.h>
 #include <Preferences.h>
 
-// ================= MOTOR SPEED CONTROL =================
-#define MOTOR_SPEED 3000        // keep it above 1k; this is in micro seconds (1000000 = 1 sec)
-#define STOP_TIME   1000        // this can be 0; it's unit is milli seconds (1000 = 1 sec)
+/* ================= MOTOR SPEED CONTROL =================
+motorSpeed - keep it above 1k; this is in micro seconds (1000000 = 1 sec)
+stopTime - this can be 0; its unit is milli seconds (1000 = 1 sec)
+*/
 
 // ================= DISPLAY & TOUCH =================
 #define TOUCH_CS   5
@@ -26,6 +27,7 @@ const int STEPS_PER_REV = 200;
 enum Page {
   PAGE_HOME,
   PAGE_ANGLE_SETUP,
+  PAGE_SPEED_SETUP,
   PAGE_TEST,
   PAGE_KEYPAD
 };
@@ -36,6 +38,7 @@ Page currentPage = PAGE_HOME;
 int openAngle;
 int closeAngle;
 unsigned long turnCount;
+unsigned long motorSpeed, stopTime;
 bool testRunning = false;
 bool directionOpening = true;
 
@@ -72,12 +75,12 @@ void stepMotor(bool ccw, int steps) {
 
   for (int i = 0; i < steps && testRunning; i++) {
     digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(MOTOR_SPEED);
+    delayMicroseconds(motorSpeed);
     digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(MOTOR_SPEED);
+    delayMicroseconds(motorSpeed);
   }
   drawTestPage();
-  delay(STOP_TIME);
+  delay(stopTime);
 }
 
 void handleTest() {
@@ -106,8 +109,9 @@ void drawHome() {
   tft.setTextFont(4);
   tft.drawString("Lock Tester", 120, 40);
 
-  drawButton(20, 90, 200, 70, "Angle Setup");
-  drawButton(20, 190, 200, 70, "Test Start");
+  drawButton(20, 70, 200, 60, "Angle Setup");
+  drawButton(20, 140, 200, 60, "Speed Setup");
+  drawButton(20, 210, 200, 60, "Test Start");
 }
 
 void drawAngleSetup() {
@@ -129,6 +133,27 @@ void drawAngleSetup() {
   tft.setTextDatum(TL_DATUM);       
   tft.drawString("Close Angle", 30, 155);
   drawButton(140, 140, 70, 40, String(closeAngle).c_str());
+}
+
+void drawSpeedSetup() {
+  tft.fillScreen(TFT_BLACK);
+  drawBackArrow();
+
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextFont(4);
+  tft.drawString("Speed Setup", 120, 30);
+
+  tft.setTextFont(2);             
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString("Speed (us)", 30, 95);
+  drawButton(140, 80, 70, 40, String((int)motorSpeed).c_str());
+
+  tft.setTextFont(2);      
+  tft.setTextDatum(TL_DATUM);       
+  tft.drawString("Stop (ms)", 30, 155);
+  drawButton(140, 140, 70, 40, String((int)stopTime).c_str());
 }
 
 void drawTestPage() {
@@ -183,6 +208,7 @@ void drawKeypad() {
 void redraw() {
   if (currentPage == PAGE_HOME) drawHome();
   else if (currentPage == PAGE_ANGLE_SETUP) drawAngleSetup();
+  else if (currentPage == PAGE_SPEED_SETUP) drawSpeedSetup();
   else if (currentPage == PAGE_TEST) drawTestPage();
   else if (currentPage == PAGE_KEYPAD) drawKeypad();
 }
@@ -203,14 +229,21 @@ void openKeypad(int* target) {
 void handleTouch(int x, int y) {
 
   if (currentPage == PAGE_HOME) {
-    if (inRect(x,y,20,90,200,70)) switchPage(PAGE_ANGLE_SETUP);
-    if (inRect(x,y,20,190,200,70)) switchPage(PAGE_TEST);
+    if (inRect(x,y,20,70,200,60)) switchPage(PAGE_ANGLE_SETUP);
+    if (inRect(x,y,20,140,200,60)) switchPage(PAGE_SPEED_SETUP);
+    if (inRect(x,y,20,210,200,60)) switchPage(PAGE_TEST);
   }
 
   else if (currentPage == PAGE_ANGLE_SETUP) {
     if (inRect(x,y,0,0,40,40)) switchPage(PAGE_HOME);
     if (inRect(x,y,140,80,70,40)) openKeypad(&openAngle);
     if (inRect(x,y,140,140,70,40)) openKeypad(&closeAngle);
+  }
+
+  else if (currentPage == PAGE_SPEED_SETUP) {
+    if (inRect(x,y,0,0,40,40)) switchPage(PAGE_HOME);
+    if (inRect(x,y,140,80,70,40)) openKeypad((int*)&motorSpeed);
+    if (inRect(x,y,140,140,70,40)) openKeypad((int*)&stopTime);
   }
 
   else if (currentPage == PAGE_TEST) {
@@ -243,17 +276,26 @@ void handleTouch(int x, int y) {
             *keypadTarget = keypadBuffer.toInt();
             keypadBuffer = "";
 
-            if(&openAngle == keypadTarget){
+            if((int*)&openAngle == keypadTarget){
               preferences.putInt("openAngle", openAngle);
+              switchPage(PAGE_ANGLE_SETUP);
             }
-            else if(&closeAngle == keypadTarget){
+            else if((int*)&closeAngle == keypadTarget){
               preferences.putInt("closeAngle", closeAngle);
+              switchPage(PAGE_ANGLE_SETUP);
             }
-
-            switchPage(PAGE_ANGLE_SETUP);
+            else if((int*)&motorSpeed == keypadTarget){
+              preferences.putULong("motorSpeed", motorSpeed);
+              switchPage(PAGE_SPEED_SETUP);
+            }
+            else if((int*)&stopTime == keypadTarget){
+              preferences.putULong("stopTime", stopTime);
+              switchPage(PAGE_SPEED_SETUP);
+            }
+            
             return;
           }
-          else if (isdigit(key[0]) && keypadBuffer.length() < 3)
+          else if (isdigit(key[0]) && keypadBuffer.length() < 6)
             keypadBuffer += key;
 
           drawKeypad();
@@ -270,6 +312,8 @@ void setup() {
   openAngle  = preferences.getInt("openAngle", 180);
   closeAngle = preferences.getInt("closeAngle", 180);
   turnCount = preferences.getULong("turnCount", 0);
+  motorSpeed = preferences.getULong("motorSpeed", 3000);
+  stopTime = preferences.getULong("stopTime", 1000);
 
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
