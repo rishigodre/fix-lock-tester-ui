@@ -43,8 +43,10 @@ with the correct pin numbers for your respective setup.**
 | A4988 | ESP32 |
 | ----- | ----- |
 | DIR   | 25    |
-| SETP  | 26    |
+| STEP  | 26    |
 | EN    | 33    |
+| VDD   | 3.3V  |
+| GND   | GND   |
 
 | A4988  | STEPPER MOTOR |
 | ------ | ------------- |
