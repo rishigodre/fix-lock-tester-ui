@@ -46,6 +46,19 @@ bool directionOpening = true;
 String keypadBuffer = "";
 int* keypadTarget = nullptr;
 
+// ================= NON-BLOCKING MOTOR STATE =================
+enum TestState {
+  TEST_IDLE,
+  TEST_STEPPING,
+  TEST_WAITING
+};
+
+TestState currentTestState = TEST_IDLE;
+int currentStepsTotal = 0;
+int currentStepsDone = 0;
+bool stepPinState = false;
+unsigned long lastMotorTime = 0;
+
 // ================= HELPERS =================
 bool inRect(int x, int y, int rx, int ry, int rw, int rh) {
   return (x > rx && x < rx + rw && y > ry && y < ry + rh);
@@ -64,42 +77,8 @@ void drawBackArrow() {
   tft.fillTriangle(10, 20, 30, 10, 30, 30, TFT_WHITE);
 }
 
-// ================= MOTOR =================
 int degreesToSteps(int deg) {
   return (deg * STEPS_PER_REV) / 360;
-}
-
-void stepMotor(bool ccw, int steps) {
-  digitalWrite(ENABLE_PIN, LOW);
-  digitalWrite(DIR_PIN, ccw ? LOW : HIGH);
-
-  for (int i = 0; i < steps && testRunning; i++) {
-    digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(motorSpeed);
-    digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(motorSpeed);
-  }
-  drawTestPage();
-  delay(stopTime);
-}
-
-void handleTest() {
-  if (!testRunning) return;
-
-  if (directionOpening) {
-    stepMotor(true, degreesToSteps(openAngle));
-    directionOpening = false;
-  } else {
-    stepMotor(false, degreesToSteps(closeAngle));
-    directionOpening = true;
-    turnCount++;
-
-    if(turnCount % 100 == 0){
-      preferences.putULong("turnCount", turnCount);
-    }
-
-    drawTestPage();   // refresh counter
-  }
 }
 
 // ================= PAGE DRAW =================
@@ -170,10 +149,9 @@ void drawTestPage() {
   tft.setTextFont(2);
   tft.drawString("turns completed", 120, 155);
   if(directionOpening)
-  tft.drawString("Opening", 120, 180);
+    tft.drawString("Opening", 120, 180);
   else
-  tft.drawString("Closing", 120, 180);
-
+    tft.drawString("Closing", 120, 180);
 
   drawButton(10, 220, 70, 50, "START");
   drawButton(85, 220, 70, 50, "STOP");
@@ -214,7 +192,10 @@ void redraw() {
 }
 
 void switchPage(Page p) {
-  if (currentPage == PAGE_TEST) testRunning = false;
+  if (currentPage == PAGE_TEST) {
+    testRunning = false;
+    currentTestState = TEST_IDLE; // Reset motor state when leaving test page
+  }
   currentPage = p;
   redraw();
 }
@@ -249,10 +230,15 @@ void handleTouch(int x, int y) {
   else if (currentPage == PAGE_TEST) {
     if (inRect(x,y,0,0,40,40)) switchPage(PAGE_HOME);
     if (inRect(x,y,10,220,70,50)) testRunning = true;
-    if (inRect(x,y,85,220,70,50)) testRunning = false;
+    if (inRect(x,y,85,220,70,50)) {
+      testRunning = false;
+      currentTestState = TEST_IDLE; // Safely stop the motor logic
+    }
     if (inRect(x,y,160,220,70,50)) {
       testRunning = false;
+      currentTestState = TEST_IDLE;
       turnCount = 0;
+      directionOpening = true; // Reset direction
       drawTestPage();
     }
   }
@@ -306,6 +292,68 @@ void handleTouch(int x, int y) {
   }
 }
 
+// ================= NON-BLOCKING MOTOR LOGIC =================
+void handleTest() {
+  if (!testRunning) return;
+
+  // 1. Setup the next movement if we are idle
+  if (currentTestState == TEST_IDLE) {
+    digitalWrite(ENABLE_PIN, LOW);
+    if (directionOpening) {
+      digitalWrite(DIR_PIN, LOW);
+      currentStepsTotal = degreesToSteps(openAngle);
+    } else {
+      digitalWrite(DIR_PIN, HIGH);
+      currentStepsTotal = degreesToSteps(closeAngle);
+    }
+    currentStepsDone = 0;
+    stepPinState = false;
+    lastMotorTime = micros();
+    currentTestState = TEST_STEPPING;
+  }
+
+  // 2. Handle stepping based on microseconds
+  if (currentTestState == TEST_STEPPING) {
+    if (micros() - lastMotorTime >= motorSpeed) {
+      lastMotorTime = micros();
+      
+      stepPinState = !stepPinState; // Toggle the pin state
+      digitalWrite(STEP_PIN, stepPinState ? HIGH : LOW);
+
+      // We complete one full step when the pin goes back LOW
+      if (!stepPinState) {
+        currentStepsDone++;
+        
+        // Are we done moving?
+        if (currentStepsDone >= currentStepsTotal) {
+          currentTestState = TEST_WAITING;
+          lastMotorTime = millis(); // Swap to tracking milliseconds for the delay
+          drawTestPage(); // Update UI
+        }
+      }
+    }
+  }
+
+  // 3. Handle the delay between cycles based on milliseconds
+  if (currentTestState == TEST_WAITING) {
+    if (millis() - lastMotorTime >= stopTime) {
+      // Delay is over, update direction and count
+      if (directionOpening) {
+        directionOpening = false;
+      } else {
+        directionOpening = true;
+        turnCount++;
+        if (turnCount % 100 == 0) {
+          preferences.putULong("turnCount", turnCount);
+        }
+      }
+      
+      drawTestPage(); // Refresh text on screen
+      currentTestState = TEST_IDLE; // Go back to IDLE to immediately start the next cycle
+    }
+  }
+}
+
 // ================= SETUP & LOOP =================
 void setup() {
   preferences.begin("settings", false);
@@ -318,7 +366,7 @@ void setup() {
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
-  digitalWrite(ENABLE_PIN, HIGH);
+  digitalWrite(ENABLE_PIN, HIGH); // Disable motor initially
 
   tft.init();
   tft.setRotation(0);
@@ -329,12 +377,16 @@ void setup() {
 }
 
 void loop() {
-  if (ts.touched()) {
-    TS_Point p = ts.getPoint();
-    int x = map(p.x, 200, 3800, 0, 240);
-    int y = map(p.y, 3800, 200, 0, 320);
-    handleTouch(x, y);
-    delay(200);
+  // Use a smaller, non-blocking delay for touch polling
+  static unsigned long lastTouchTime = 0;
+  if (millis() - lastTouchTime > 100) { 
+    if (ts.touched()) {
+      TS_Point p = ts.getPoint();
+      int x = map(p.x, 200, 3800, 0, 240);
+      int y = map(p.y, 3800, 200, 0, 320);
+      handleTouch(x, y);
+      lastTouchTime = millis();
+    }
   }
 
   handleTest();
