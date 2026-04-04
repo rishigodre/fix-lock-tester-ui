@@ -58,6 +58,13 @@ with the correct pin numbers for your respective setup.**
 | VMOT  | 12V     |
 | GND   | GND     |
 
+| A4988 | Motor |
+| ----- | ----- |
+| B1    | A2    |
+| A1    | A1    |
+| A2    | B1    |
+| B2    | B2    |
+
 
 
 **For Windows do the following steps**
