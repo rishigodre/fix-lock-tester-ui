@@ -18,8 +18,8 @@ Preferences preferences;
 
 // ================= STEPPER (A4988) =================
 #define STEP_PIN   26
-#define DIR_PIN    25
-#define ENABLE_PIN 33
+#define DIR_PIN    33
+#define ENABLE_PIN 25
 
 const int STEPS_PER_REV = 200;
 

@@ -16,9 +16,10 @@ with the correct pin numbers for your respective setup.**
 //#define TFT_RST  -1  // Set TFT_RST to -1 if display RESET is connected to ESP32 board RST
 ```
 1. DO THE ABOVE CHANGES.
-2. Power everything with 3.3V.
-3. Short the SLEEP and RESET pins of A4988.
-4. Do the connections as follows.
+2. MAKE SURE TO CHECK IF PCB AND ESP PIN OUT.
+3. Power everything with 3.3V.
+4. Short the SLEEP and RESET pins of A4988.
+5. Do the connections as follows.
 
 | ILI9341   | ESP32   |
 | --------- | ------- |
