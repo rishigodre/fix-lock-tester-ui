@@ -18,7 +18,7 @@ with the correct pin numbers for your respective setup.**
 1. DO THE ABOVE CHANGES.
 2. MAKE SURE TO CHECK IF PCB AND ESP PIN OUT.
 3. Power everything with 3.3V.
-4. Short the SLEEP and RESET pins of A4988.
+4. Short the SLEEP and RESET pins of A4988 and also provide them with logic 1 or +ve voltage.
 5. Do the connections as follows.
 
 | ILI9341   | ESP32   |
